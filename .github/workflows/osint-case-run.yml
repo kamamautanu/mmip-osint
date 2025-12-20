@@ -1,0 +1,92 @@
+name: osint-case-run
+
+on:
+  workflow_dispatch:
+    inputs:
+      case_path:
+        description: "Path to case intake YAML/JSON in repo (e.g., cases/case001.yaml)"
+        required: true
+        type: string
+      enable_db:
+        description: "Also write investigation artifacts to SQLite DB"
+        required: false
+        default: false
+        type: boolean
+      run_notes:
+        description: "Optional notes (stored in logs/artifact metadata if you choose)"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.11"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Verify inputs exist
+        run: |
+          test -f "${{ inputs.case_path }}"
+          echo "Case file found: ${{ inputs.case_path }}"
+
+      - name: Prepare output directories
+        run: |
+          mkdir -p out
+          mkdir -p logs
+
+      - name: Check yt-dlp
+        run: uv run yt-dlp --version
+
+      # --- RUN ORCHESTRATOR ---
+      # MVP expectation: orchestrator is sequence-only and consumes the case file.
+      # It should spawn MCP servers via ADK (mcp.json) or directly (stdio).
+      - name: Run orchestrator (no DB)
+        if: ${{ inputs.enable_db == false }}
+        env:
+          # If your orchestrator/ADK reads mcp.json from repo, ensure it is present at runtime.
+          # Example: MCP_CONFIG_PATH: "mcp.json"
+          # Optional: pass through run notes
+          RUN_NOTES: ${{ inputs.run_notes }}
+        run: |
+          set -euo pipefail
+          uv run python -m mmip_orchestrator run \
+            --case "${{ inputs.case_path }}" \
+            --out "out" \
+            2>&1 | tee "logs/orchestrator.log"
+
+      - name: Run orchestrator (with DB)
+        if: ${{ inputs.enable_db == true }}
+        env:
+          RUN_NOTES: ${{ inputs.run_notes }}
+        run: |
+          set -euo pipefail
+          uv run python -m mmip_orchestrator run \
+            --case "${{ inputs.case_path }}" \
+            --out "out" \
+            --db "out/investigation.sqlite" \
+            2>&1 | tee "logs/orchestrator.log"
+
+      # --- UPLOAD ARTIFACTS ---
+      - name: Upload dossier artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dossier-${{ github.run_id }}
+          path: out/
+
+      - name: Upload logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ github.run_id }}
+          path: logs/
