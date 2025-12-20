@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.11"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Compile check
+        run: uv run python -m compileall -q src
+
+      # Optional: ensure yt-dlp is available in the env
+      - name: Check yt-dlp
+        run: uv run yt-dlp --version
+
+      # Optional: if you added MCP_SELF_TEST=1 behavior to tiktok-mcp
+      # - name: TikTok MCP self-test
+      #   env:
+      #     MCP_SELF_TEST: "1"
+      #   run: uv run tiktok-mcp
