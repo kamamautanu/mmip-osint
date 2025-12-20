@@ -1,4 +1,4 @@
-# TikTok MCP Server (yt-dlp)
+# TikTok MCP Server
 
 A minimal **Model Context Protocol (MCP) server** that extracts **public TikTok metadata** using `yt-dlp`, designed to support **missing person / MMIP investigations** by producing structured, source-linked signals suitable for inclusion in a **law-enforcement dossier**.
 
