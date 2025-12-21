@@ -3,6 +3,11 @@ name: osint-case-run
 on:
   workflow_dispatch:
     inputs:
+      project_dir:
+        description: "Directory containing orchestrator pyproject.toml (e.g., apps/mmip-orchestrator)"
+        required: false
+        default: "tiktok-osint-mcp"
+        type: string
       case_path:
         description: "Path to case intake YAML/JSON in repo (e.g., cases/case001.yaml)"
         required: true
@@ -27,56 +32,79 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v3
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          enable-cache: true
 
-      - name: Install dependencies
-        run: uv sync
+      - name: Set up uv (no cache)
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: false
 
       - name: Verify inputs exist
         run: |
-          test -f "${{ inputs.case_path }}"
-          echo "Case file found: ${{ inputs.case_path }}"
+          test -f "${{ github.workspace }}/${{ inputs.case_path }}"
+          test -f "${{ github.workspace }}/${{ inputs.project_dir }}/pyproject.toml"
+          echo "Case file found: ${{ github.workspace }}/${{ inputs.case_path }}"
+          echo "Project found:   ${{ github.workspace }}/${{ inputs.project_dir }}"
 
       - name: Prepare output directories
         run: |
-          mkdir -p out
-          mkdir -p logs
+          mkdir -p "${{ github.workspace }}/out"
+          mkdir -p "${{ github.workspace }}/logs"
 
-      - name: Check yt-dlp
-        run: uv run yt-dlp --version
+      - name: Install dependencies (orchestrator project)
+        working-directory: ${{ inputs.project_dir }}
+        run: uv sync
+
+      # Optional: only run if yt-dlp is in this project environment
+      - name: Check yt-dlp (optional)
+        working-directory: ${{ inputs.project_dir }}
+        run: |
+          if uv run --quiet python -c "import shutil; raise SystemExit(0 if shutil.which('yt-dlp') else 1)"; then
+            uv run yt-dlp --version
+          else
+            echo "yt-dlp not present in this project; skipping"
+          fi
 
       # --- RUN ORCHESTRATOR ---
-      # MVP expectation: orchestrator is sequence-only and consumes the case file.
-      # It should spawn MCP servers via ADK (mcp.json) or directly (stdio).
       - name: Run orchestrator (no DB)
         if: ${{ inputs.enable_db == false }}
+        working-directory: ${{ inputs.project_dir }}
         env:
-          # If your orchestrator/ADK reads mcp.json from repo, ensure it is present at runtime.
-          # Example: MCP_CONFIG_PATH: "mcp.json"
-          # Optional: pass through run notes
           RUN_NOTES: ${{ inputs.run_notes }}
+          # If needed:
+          # MCP_CONFIG_PATH: "${{ github.workspace }}/mcp.json"
         run: |
           set -euo pipefail
+          CASE_ABS="${{ github.workspace }}/${{ inputs.case_path }}"
+          OUT_ABS="${{ github.workspace }}/out"
+          LOG_ABS="${{ github.workspace }}/logs/orchestrator.log"
+
           uv run python -m mmip_orchestrator run \
-            --case "${{ inputs.case_path }}" \
-            --out "out" \
-            2>&1 | tee "logs/orchestrator.log"
+            --case "$CASE_ABS" \
+            --out "$OUT_ABS" \
+            2>&1 | tee "$LOG_ABS"
 
       - name: Run orchestrator (with DB)
         if: ${{ inputs.enable_db == true }}
+        working-directory: ${{ inputs.project_dir }}
         env:
           RUN_NOTES: ${{ inputs.run_notes }}
+          # MCP_CONFIG_PATH: "${{ github.workspace }}/mcp.json"
         run: |
           set -euo pipefail
+          CASE_ABS="${{ github.workspace }}/${{ inputs.case_path }}"
+          OUT_ABS="${{ github.workspace }}/out"
+          DB_ABS="${{ github.workspace }}/out/investigation.sqlite"
+          LOG_ABS="${{ github.workspace }}/logs/orchestrator.log"
+
           uv run python -m mmip_orchestrator run \
-            --case "${{ inputs.case_path }}" \
-            --out "out" \
-            --db "out/investigation.sqlite" \
-            2>&1 | tee "logs/orchestrator.log"
+            --case "$CASE_ABS" \
+            --out "$OUT_ABS" \
+            --db "$DB_ABS" \
+            2>&1 | tee "$LOG_ABS"
 
       # --- UPLOAD ARTIFACTS ---
       - name: Upload dossier artifacts
