@@ -11,6 +11,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - tiktok-osint-mcp
+          # other mcps 
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,16 +30,27 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v3
         with:
-          enable-cache: false 
+          enable-cache: true
+          cache-dependency-glob: "${{ matrix.project }}/uv.lock"
 
-      - name: Verify uv
-        run: uv --version
+      - name: Verify project exists
+        run: |
+          test -f "${{ matrix.project }}/pyproject.toml" || (echo "Missing pyproject.toml in ${{ matrix.project }}" && exit 1)
 
       - name: Install dependencies
+        working-directory: ${{ matrix.project }}
         run: uv sync
 
       - name: Compile check
-        run: uv run python -m compileall -q src
+        working-directory: ${{ matrix.project }}
+        run: uv run python -m compileall -q .
 
-      - name: Check yt-dlp
-        run: uv run yt-dlp --version
+      # Optional: tool-specific check
+      - name: Check yt-dlp (if used)
+        working-directory: ${{ matrix.project }}
+        run: |
+          if uv run --quiet python -c "import shutil; raise SystemExit(0 if shutil.which('yt-dlp') else 1)"; then
+            uv run yt-dlp --version
+          else
+            echo "yt-dlp not in this project; skipping"
+          fi
