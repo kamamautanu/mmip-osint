@@ -8,8 +8,8 @@ on:
         required: false
         default: "tiktok-osint-mcp"
         type: string
-      case_path:
-        description: "Path to case intake YAML/JSON in repo (e.g., cases/case001.yaml)"
+      prompt:
+        description: "Case prompt (single sentence): name + known usernames/handles."
         required: true
         type: string
       enable_db:
@@ -42,12 +42,11 @@ jobs:
         with:
           enable-cache: false
 
-      - name: Verify inputs exist
+      - name: Verify project exists
         run: |
-          test -f "${{ github.workspace }}/${{ inputs.case_path }}"
+          set -euo pipefail
           test -f "${{ github.workspace }}/${{ inputs.project_dir }}/pyproject.toml"
-          echo "Case file found: ${{ github.workspace }}/${{ inputs.case_path }}"
-          echo "Project found:   ${{ github.workspace }}/${{ inputs.project_dir }}"
+          echo "Project found: ${{ github.workspace }}/${{ inputs.project_dir }}"
 
       - name: Prepare output directories
         run: |
@@ -58,7 +57,6 @@ jobs:
         working-directory: ${{ inputs.project_dir }}
         run: uv sync
 
-      # Optional: only run if yt-dlp is in this project environment
       - name: Check yt-dlp (optional)
         working-directory: ${{ inputs.project_dir }}
         run: |
@@ -69,42 +67,38 @@ jobs:
           fi
 
       # --- RUN ORCHESTRATOR ---
+      # Pass the prompt via stdin (works even if your orchestrator is interactive locally).
       - name: Run orchestrator (no DB)
         if: ${{ inputs.enable_db == false }}
         working-directory: ${{ inputs.project_dir }}
         env:
           RUN_NOTES: ${{ inputs.run_notes }}
-          # If needed:
-          # MCP_CONFIG_PATH: "${{ github.workspace }}/mcp.json"
         run: |
           set -euo pipefail
-          CASE_ABS="${{ github.workspace }}/${{ inputs.case_path }}"
           OUT_ABS="${{ github.workspace }}/out"
           LOG_ABS="${{ github.workspace }}/logs/orchestrator.log"
 
-          uv run python -m mmip_orchestrator run \
-            --case "$CASE_ABS" \
-            --out "$OUT_ABS" \
-            2>&1 | tee "$LOG_ABS"
+          printf "%s" "${{ inputs.prompt }}" | \
+            uv run python -m mmip_orchestrator run \
+              --out "$OUT_ABS" \
+              2>&1 | tee "$LOG_ABS"
 
       - name: Run orchestrator (with DB)
         if: ${{ inputs.enable_db == true }}
         working-directory: ${{ inputs.project_dir }}
         env:
           RUN_NOTES: ${{ inputs.run_notes }}
-          # MCP_CONFIG_PATH: "${{ github.workspace }}/mcp.json"
         run: |
           set -euo pipefail
-          CASE_ABS="${{ github.workspace }}/${{ inputs.case_path }}"
           OUT_ABS="${{ github.workspace }}/out"
           DB_ABS="${{ github.workspace }}/out/investigation.sqlite"
           LOG_ABS="${{ github.workspace }}/logs/orchestrator.log"
 
-          uv run python -m mmip_orchestrator run \
-            --case "$CASE_ABS" \
-            --out "$OUT_ABS" \
-            --db "$DB_ABS" \
-            2>&1 | tee "$LOG_ABS"
+          printf "%s" "${{ inputs.prompt }}" | \
+            uv run python -m mmip_orchestrator run \
+              --out "$OUT_ABS" \
+              --db "$DB_ABS" \
+              2>&1 | tee "$LOG_ABS"
 
       # --- UPLOAD ARTIFACTS ---
       - name: Upload dossier artifacts
