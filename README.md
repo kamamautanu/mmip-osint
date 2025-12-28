@@ -80,7 +80,7 @@ This project aims to make OSINT **more structured, auditable, and safer-by-defau
 
 ```mermaid
 flowchart TD
-  A[Root Orchestrator<br/>SequentialAgent] --> B[OSINT Ingestion MAP<br/>ParallelAgent]
+  A["Root Orchestrator\nSequentialAgent"] --> B["OSINT Ingestion MAP\nParallelAgent"]
   B --> B1[TikTok Connector]
   B --> B2[Facebook Connector]
   B --> B3[Instagram Connector]
