@@ -105,4 +105,4 @@ flowchart TD
   I --> I2[Presentation Safety B<br/>Misuse/Framing/Aggregation]
 
   I --> J[Presentation Safety Judge]
-  J --> K[HITL Presentation Gate<br/>(planned/infra)]
+  J --> K[HITL Presentation Gate (planned/infra)]
